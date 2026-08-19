@@ -21,42 +21,42 @@ This motivates reframing the task as **semantic retrieval**: given a protein's a
 ## 2. System Overview
 
 ```
-                    ┌─────────────────────────────┐
+                    ┌──────────────────────────────┐
                     │      Test Protein Input      │
-                    │  (sequence, taxon ID)         │
-                    └───────────────┬───────────────┘
+                    │  (sequence, taxon ID)        │
+                    └───────────────┬──────────────┘
                                     │
             ┌───────────────────────┼───────────────────────┐
             │                       │                       │
             ▼                       ▼                       ▼
-┌───────────────────┐   ┌───────────────────┐   ┌────────────────────┐
-│  Sequence-Similarity│   │  Embedding k-NN    │   │  Text/Description   │
-│  Candidate Generator│   │  Candidate Generator│   │  Synthesis (LLM)     │
-│  (Diamond/MMseqs2)  │   │  (ESM2/ESM3 + ANN)  │   │  for novel proteins  │
+┌─────────────────────┐   ┌─────────────────────┐   ┌─────────────────────┐
+│  Sequence-Similarity│   │  Embedding k-NN     │   │  Text/Description   │
+│  Candidate Generator│   │  Candidate Generator│   │  Synthesis (LLM)    │
+│  (Diamond/MMseqs2)  │   │  (ESM2/ESM3 + ANN)  │   │  for novel proteins │
 └──────────┬──────────┘   └──────────┬──────────┘   └──────────┬──────────┘
            │                          │                          │
            └──────────────┬───────────┴──────────────────────────┘
                            ▼
-              ┌─────────────────────────────┐
+              ┌───────────────────────────────┐
               │   Candidate GO Term Shortlist │
-              │        (~50–200 terms)         │
-              └───────────────┬─────────────────┘
+              │        (~50–200 terms)        │
+              └───────────────┬───────────────┘
                               ▼
-              ┌─────────────────────────────┐
-              │  Semantic Reranker            │
+              ┌────────────────────────────────┐
+              │  Semantic Reranker             │
               │  (protein text ↔ GO definition)│
               │  cross-encoder / LLM scorer    │
-              └───────────────┬─────────────────┘
+              └───────────────┬────────────────┘
                               ▼
-              ┌─────────────────────────────┐
+              ┌────────────────────────────────┐
               │   Graph-RAG Consistency Layer  │
               │   (Neo4j: GO DAG structure)    │
               │   - true-path propagation      │
-              │   - sibling/ancestor conflict   │
-              │     resolution via LLM agent    │
-              └───────────────┬─────────────────┘
+              │   - sibling/ancestor conflict  │
+              │     resolution via LLM agent   │
+              └───────────────┬────────────────┘
                               ▼
-              ┌─────────────────────────────┐
+              ┌─────────────────────────────────┐
               │   Score Ensemble + Thresholding │
               │   (tuned against IA-weighted    │
               │    F-max on temporal val split) │
