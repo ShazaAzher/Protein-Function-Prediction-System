@@ -92,15 +92,25 @@ def parse_ncbi_taxdump(nodes_path: str, names_path: str | None = None) -> nx.DiG
 
     return graph
 
+def parse_merged_dmp(path: str) -> dict[str, str]:
+    """Parse merged.dmp -> {old_tax_id: new_tax_id}."""
+    merged: dict[str, str] = {}
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            fields = [x.strip() for x in line.split("|")]
+            if len(fields) < 2 or not fields[0]:
+                continue
+            merged[fields[0]] = fields[1]
+    return merged
 
-def classify_kingdom(taxon_id: int | str, taxdump_graph: nx.DiGraph, max_depth: int = 50) -> str | None:
-    """Walk the parent chain up to a superkingdom or eukaryotic-kingdom-clade
-    anchor. Returns a value in ALLOWED_KINGDOMS, or None if unresolvable.
-    """
+
+def classify_kingdom(taxon_id, taxdump_graph, merged_map=None, max_depth=50):
     node = str(taxon_id)
     if node not in taxdump_graph:
-        return None
-
+        if merged_map and node in merged_map:
+            node = merged_map[node]
+        if node not in taxdump_graph:
+            return None
     for _ in range(max_depth):
         if node in EUKARYOTE_CLADE_TAXIDS:
             return EUKARYOTE_CLADE_TAXIDS[node]
@@ -138,3 +148,10 @@ def resolve_kingdoms(
         else:
             unresolved.append(taxon_id)
     return resolved, sorted(unresolved)
+
+
+from goprot.data.taxonomy import parse_ncbi_taxdump, parse_merged_dmp, resolve_kingdoms
+
+taxdump = parse_ncbi_taxdump("nodes.dmp", "names.dmp")
+merged = parse_merged_dmp("merged.dmp")
+resolved, unresolved = resolve_kingdoms(real_taxa, taxdump_graph=taxdump, merged_map=merged)
