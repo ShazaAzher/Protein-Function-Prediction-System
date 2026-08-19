@@ -1,0 +1,26 @@
+[project]
+name = "goprot"
+version = "0.1.0"
+description = "CAFA6 protein function prediction, focused on the Partial-Knowledge (PK) setting"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "pandas",
+    "scipy",
+    "scikit-learn",
+    "torch",
+    "fair-esm",
+    "networkx",
+    "obonet",
+    "biopython",
+    "pyarrow",
+    "faiss-cpu",
+    "pyyaml",
+    "tqdm",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-cov", "jupyter"]
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -1,0 +1,39 @@
+# Paths
+paths:
+  raw_dir: data/raw
+  processed_dir: data/processed
+  outputs_dir: outputs
+
+# Target label space (Task 1.4 tunes these against the coverage curve)
+label_space:
+  top_k_bpo: 3000
+  top_k_mfo: 1000
+  top_k_cco: 500
+
+# Candidate generation (Task 1.x)
+homology:
+  tool: diamond   # diamond | mmseqs2
+  same_kingdom_first: true
+
+embedding:
+  model: esm2_t33_650M_UR50D
+  batch_size: 32
+  precision: fp16
+
+# PK conditioning (Task 2.x) — the paper's core contribution
+pk_conditioning:
+  enabled: true
+  term_embedding_dim: 64
+  known_term_pooling: mean   # mean | max
+
+# Ensemble (Task 3.x)
+ensemble:
+  classifier_weight: 0.5
+  homology_weight: 0.5
+
+# Validation split (Task 0.5)
+validation_split:
+  strategy: synthetic_pk_nk_mask
+  mask_fraction: 0.3
+  min_known_terms_for_pk: 2
+  seed: 42
