@@ -1,19 +1,24 @@
-from dataclasses import dataclass
-from typing import Dict, List, Optional
-import networkx as nx
-import obonet
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Dict, List, Optional, Tuple
 
-
+import networkx as nx
+import obonet
 import pandas as pd
+
 NAMESPACE_MAP = {
     "molecular_function": "MFO",
     "biological_process": "BPO",
     "cellular_component": "CCO",
 }
+
+
+# ---------------------------------------------------------------------
+# GO graph
+# ---------------------------------------------------------------------
 
 @dataclass
 class GOTerm:
@@ -21,6 +26,7 @@ class GOTerm:
     name: str
     namespace: str
     definition: str
+
 
 class GOGraph:
     def __init__(self, graph: nx.MultiDiGraph):
@@ -44,19 +50,27 @@ class GOGraph:
         )
 
     def parents(self, go_id: str) -> Dict[str, List[str]]:
-        rels = {"is_a": [], "part_of": []}
+        """
+        Return this term's direct parents, split by relation type.
 
-        for _, parent, data in self.graph.out_edges(go_id, data=True):
-            relation = data.get("relation")
+        obonet stores the relation type as the EDGE KEY on the
+        MultiDiGraph (not as a "relation" field inside the edge data
+        dict) -- a term can have multiple is_a parents, so the key is
+        what disambiguates parallel edges between the same node pair.
+        Unlabeled "is_a: GO:xxxxxxx ! name" lines are keyed "is_a";
+        typed relations like "relationship: part_of GO:xxxxxxx ! name"
+        are keyed "part_of".
+        """
+        rels: Dict[str, List[str]] = {"is_a": [], "part_of": []}
 
-            if relation == "part_of":
-                rels["part_of"].append(parent)
-            elif relation is None:
-                rels["is_a"].append(parent)
+        for _, parent, key in self.graph.out_edges(go_id, keys=True):
+            if key in rels:
+                rels[key].append(parent)
 
         return rels
 
-
+    def all_go_ids(self) -> set[str]:
+        return set(self.graph.nodes)
 
 
 # ---------------------------------------------------------------------
@@ -72,7 +86,7 @@ def read_fasta(path: str | Path) -> List[Tuple[str, str]]:
     """
     records = []
     header = None
-    sequence_parts = []
+    sequence_parts: List[str] = []
 
     with open(path, "r", encoding="utf-8") as fh:
         for raw_line in fh:
@@ -127,15 +141,12 @@ def parse_train_header(header: str) -> Dict[str, Optional[str]]:
     Parse a UniProt-style training FASTA header.
 
     Example:
-        sp|A0A0C5B5G6|MOTSC_HUMAN
-        Mitochondrial-derived peptide MOTS-c
+        sp|A0A0C5B5G6|MOTSC_HUMAN Mitochondrial-derived peptide MOTS-c
         OS=Homo sapiens OX=9606 GN=MT-RNR1 PE=1 SV=1
     """
     match = UNIPROT_HEADER_RE.match(header)
 
     if not match:
-        # Fallback parser for headers that don't exactly match the
-        # UniProt pattern.
         first_token = header.split(maxsplit=1)[0]
 
         if "|" in first_token:
@@ -179,9 +190,6 @@ def _extract_field(text: str, pattern: str) -> Optional[str]:
 
 
 def _extract_organism(text: str) -> Optional[str]:
-    """
-    Extract OS=... up to the next UniProt annotation field.
-    """
     match = re.search(
         r"\bOS=(.*?)(?=\s+(?:OX|GN|PE|SV|CC|DR|KW|FT)=|$)",
         text,
@@ -190,12 +198,8 @@ def _extract_organism(text: str) -> Optional[str]:
 
 
 def _extract_protein_name(text: str) -> Optional[str]:
-    """
-    Protein name is the curated description before OS=.
-    """
     if " OS=" in text:
         return text.split(" OS=", 1)[0].strip()
-
     return text.strip() or None
 
 
@@ -204,20 +208,13 @@ def load_train_sequences(path: str | Path) -> pd.DataFrame:
     Load train_sequences.fasta.
 
     Columns:
-        accession
-        sequence
-        source_db
-        protein_name
-        gene_name
-        organism
-        taxon_id
-        entry_name
+        accession, sequence, source_db, protein_name, gene_name,
+        organism, taxon_id, entry_name
     """
     rows = []
 
     for header, sequence in read_fasta(path):
         parsed = parse_train_header(header)
-
         rows.append(
             {
                 "accession": parsed["accession"],
@@ -237,14 +234,8 @@ def load_train_sequences(path: str | Path) -> pd.DataFrame:
         raise ValueError(f"No FASTA records found in {path}")
 
     if df["accession"].duplicated().any():
-        duplicates = df.loc[
-            df["accession"].duplicated(keep=False),
-            "accession",
-        ].tolist()
-
-        raise ValueError(
-            f"Duplicate accessions in {path}: {duplicates[:10]}"
-        )
+        duplicates = df.loc[df["accession"].duplicated(keep=False), "accession"].tolist()
+        raise ValueError(f"Duplicate accessions in {path}: {duplicates[:10]}")
 
     return df
 
@@ -264,22 +255,17 @@ def parse_test_header(header: str) -> Dict[str, str]:
 
     if len(parts) < 2:
         raise ValueError(
-            f"Invalid test FASTA header. Expected "
-            f"'accession taxon_id', got: {header!r}"
+            f"Invalid test FASTA header. Expected 'accession taxon_id', "
+            f"got: {header!r}"
         )
 
     accession = parts[0]
     taxon_id = parts[1]
 
     if not taxon_id.isdigit():
-        raise ValueError(
-            f"Invalid taxon ID in test FASTA header: {header!r}"
-        )
+        raise ValueError(f"Invalid taxon ID in test FASTA header: {header!r}")
 
-    return {
-        "accession": accession,
-        "taxon_id": taxon_id,
-    }
+    return {"accession": accession, "taxon_id": taxon_id}
 
 
 def load_test_sequences(path: str | Path) -> pd.DataFrame:
@@ -287,17 +273,15 @@ def load_test_sequences(path: str | Path) -> pd.DataFrame:
     Load testsuperset.fasta.
 
     Columns:
-        accession
-        sequence
-        taxon_id
+        accession, sequence, taxon_id
 
-    No curated text is synthesized here.
+    No curated text is present in test headers -- description synthesis
+    for test proteins happens downstream (text/synthesis.py), not here.
     """
     rows = []
 
     for header, sequence in read_fasta(path):
         parsed = parse_test_header(header)
-
         rows.append(
             {
                 "accession": parsed["accession"],
@@ -312,14 +296,8 @@ def load_test_sequences(path: str | Path) -> pd.DataFrame:
         raise ValueError(f"No FASTA records found in {path}")
 
     if df["accession"].duplicated().any():
-        duplicates = df.loc[
-            df["accession"].duplicated(keep=False),
-            "accession",
-        ].tolist()
-
-        raise ValueError(
-            f"Duplicate accessions in {path}: {duplicates[:10]}"
-        )
+        duplicates = df.loc[df["accession"].duplicated(keep=False), "accession"].tolist()
+        raise ValueError(f"Duplicate accessions in {path}: {duplicates[:10]}")
 
     return df
 
@@ -330,35 +308,21 @@ def load_test_sequences(path: str | Path) -> pd.DataFrame:
 
 def load_train_terms(path: str | Path) -> pd.DataFrame:
     """
-    Load train_terms.tsv.
-
-    Expected columns:
-        EntryID, term, aspect
+    Load train_terms.tsv. Expected columns: EntryID, term, aspect.
     """
-    df = pd.read_csv(
-        path,
-        sep="\t",
-        dtype=str,
-    )
+    df = pd.read_csv(path, sep="\t", dtype=str)
 
     required = {"EntryID", "term", "aspect"}
-
     missing = required - set(df.columns)
-
     if missing:
-        raise ValueError(
-            f"{path} is missing columns: {sorted(missing)}"
-        )
+        raise ValueError(f"{path} is missing columns: {sorted(missing)}")
 
     return df
 
 
 def load_train_taxonomy(path: str | Path) -> pd.DataFrame:
     """
-    Load train_taxonomy.tsv.
-
-    Expected:
-        EntryID    taxon_id
+    Load train_taxonomy.tsv. Expected columns: EntryID, taxon_id (no header row).
     """
     df = pd.read_csv(
         path,
@@ -367,7 +331,6 @@ def load_train_taxonomy(path: str | Path) -> pd.DataFrame:
         names=["EntryID", "taxon_id"],
         dtype=str,
     )
-
     return df
 
 
@@ -375,31 +338,17 @@ def load_test_taxon_list(path: str | Path) -> pd.DataFrame:
     """
     Load testsuperset-taxon-list.tsv.
 
-    Expected columns:
-        ID, Species
+    Expected: tab-separated with a header row (ID, Species). Species
+    names may contain spaces and parentheses (e.g. "Escherichia coli
+    (strain K12)"), so this must NOT be parsed with a whitespace
+    separator -- only tabs delimit fields here.
     """
-    df = pd.read_csv(
-        path,
-        sep=r"\s+",
-        dtype=str,
-    )
-
-    # Accommodate a possible two-column tab-separated file as well.
-    if len(df.columns) != 2:
-        df = pd.read_csv(
-            path,
-            sep="\t",
-            dtype=str,
-        )
+    df = pd.read_csv(path, sep="\t", dtype=str)
 
     if set(df.columns) != {"ID", "Species"}:
-        # Normalize if the file has no header.
-        df = pd.read_csv(
-            path,
-            sep="\t",
-            header=None,
-            names=["ID", "Species"],
-            dtype=str,
+        raise ValueError(
+            f"Unexpected columns in {path}: {df.columns.tolist()} "
+            f"(expected ID, Species)"
         )
 
     return df
@@ -407,11 +356,7 @@ def load_test_taxon_list(path: str | Path) -> pd.DataFrame:
 
 def load_ia(path: str | Path) -> pd.DataFrame:
     """
-    Load IA.tsv.
-
-    Columns:
-        term
-        information_accretion
+    Load IA.tsv. Columns: term, information_accretion (no header row).
     """
     df = pd.read_csv(
         path,
@@ -422,8 +367,7 @@ def load_ia(path: str | Path) -> pd.DataFrame:
     )
 
     df["information_accretion"] = pd.to_numeric(
-        df["information_accretion"],
-        errors="raise",
+        df["information_accretion"], errors="raise"
     )
 
     return df
@@ -443,14 +387,11 @@ def validate_train_joins(
     train_taxonomy: pd.DataFrame,
 ) -> Dict[str, List[str]]:
     """
-    Validate all training-side accession joins.
-
-    Returns a dictionary containing missing references.
-
-    Raises JoinValidationError if any integrity problem is found.
+    Validate all training-side accession joins. Raises
+    JoinValidationError on any integrity problem; returns a dict of
+    missing references otherwise (empty lists = clean).
     """
     sequence_ids = set(train_sequences["accession"].astype(str))
-
     term_ids = set(train_terms["EntryID"].astype(str))
     taxonomy_ids = set(train_taxonomy["EntryID"].astype(str))
 
@@ -463,13 +404,11 @@ def validate_train_joins(
     }
 
     problems = []
-
     if missing_terms:
         problems.append(
             "train_terms.tsv references accessions missing from "
             f"train_sequences.fasta: {missing_terms}"
         )
-
     if missing_taxonomy:
         problems.append(
             "train_taxonomy.tsv references accessions missing from "
@@ -507,27 +446,18 @@ def validate_ia_terms(
     go_ids: Optional[set[str]] = None,
 ) -> None:
     """
-    Validate IA terms.
-
-    If go_ids is supplied, every IA term must exist in the GO graph.
+    Validate IA terms. If go_ids is supplied, every IA term must exist
+    in the GO graph.
     """
     if ia["term"].duplicated().any():
-        duplicates = ia.loc[
-            ia["term"].duplicated(keep=False),
-            "term",
-        ].tolist()
-
-        raise JoinValidationError(
-            f"Duplicate GO terms in IA.tsv: {duplicates[:10]}"
-        )
+        duplicates = ia.loc[ia["term"].duplicated(keep=False), "term"].tolist()
+        raise JoinValidationError(f"Duplicate GO terms in IA.tsv: {duplicates[:10]}")
 
     if go_ids is not None:
         missing = sorted(set(ia["term"]) - go_ids)
-
         if missing:
             raise JoinValidationError(
-                "IA.tsv contains GO terms absent from the GO graph: "
-                f"{missing}"
+                f"IA.tsv contains GO terms absent from the GO graph: {missing}"
             )
 
 
@@ -542,11 +472,11 @@ def load_dataset(
     test_sequences_path: str | Path,
     test_taxon_list_path: str | Path,
     ia_path: str | Path,
-):
+    go_obo_path: Optional[str | Path] = None,
+) -> Dict[str, object]:
     """
-    Load all supplied files.
-
-    Validation is performed before returning the datasets.
+    Load and validate all supplied files. If go_obo_path is given, also
+    loads the GO graph and cross-checks IA.tsv terms against it.
     """
     train_sequences = load_train_sequences(train_sequences_path)
     train_terms = load_train_terms(train_terms_path)
@@ -557,16 +487,15 @@ def load_dataset(
 
     ia = load_ia(ia_path)
 
-    validate_train_joins(
-        train_sequences,
-        train_terms,
-        train_taxonomy,
-    )
+    validate_train_joins(train_sequences, train_terms, train_taxonomy)
+    validate_test_taxa(test_sequences, test_taxon_list)
 
-    validate_test_taxa(
-        test_sequences,
-        test_taxon_list,
-    )
+    go_graph = None
+    if go_obo_path is not None:
+        go_graph = GOGraph.from_obo(str(go_obo_path))
+        validate_ia_terms(ia, go_ids=go_graph.all_go_ids())
+    else:
+        validate_ia_terms(ia)
 
     return {
         "train_sequences": train_sequences,
@@ -575,49 +504,5 @@ def load_dataset(
         "test_sequences": test_sequences,
         "test_taxon_list": test_taxon_list,
         "ia": ia,
+        "go_graph": go_graph,
     }
-
-from data_loader import (
-    load_train_sequences,
-    load_train_terms,
-    load_train_taxonomy,
-    load_test_sequences,
-    load_test_taxon_list,
-    load_ia,
-    validate_train_joins,
-    validate_test_taxa,
-)
-
-train_sequences = load_train_sequences(
-    "../data/train/train_sequences.fasta"
-)
-
-train_terms = load_train_terms(
-    "../data/train/train_terms.tsv"
-)
-
-train_taxonomy = load_train_taxonomy(
-    "../data/train/train_taxonomy.tsv"
-)
-
-test_sequences = load_test_sequences(
-    "../data/test/testsuperset.fasta"
-)
-
-test_taxon_list = load_test_taxon_list(
-    "../data/test/testsuperset-taxon-list.tsv"
-)
-
-ia = load_ia("../data/IA.tsv")
-
-# Strict integrity checks.
-validate_train_joins(
-    train_sequences,
-    train_terms,
-    train_taxonomy,
-)
-
-validate_test_taxa(
-    test_sequences,
-    test_taxon_list,
-)
