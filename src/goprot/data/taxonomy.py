@@ -149,9 +149,3 @@ def resolve_kingdoms(
             unresolved.append(taxon_id)
     return resolved, sorted(unresolved)
 
-
-from goprot.data.taxonomy import parse_ncbi_taxdump, parse_merged_dmp, resolve_kingdoms
-
-taxdump = parse_ncbi_taxdump("nodes.dmp", "names.dmp")
-merged = parse_merged_dmp("merged.dmp")
-resolved, unresolved = resolve_kingdoms(real_taxa, taxdump_graph=taxdump, merged_map=merged)
