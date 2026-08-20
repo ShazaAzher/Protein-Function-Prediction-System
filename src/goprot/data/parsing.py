@@ -205,7 +205,7 @@ def _iter_fasta_records(path: str | Path) -> Iterator[tuple[str, str]]:
 _TRAIN_HEADER_RE = re.compile(
     r"^(?P<db>[^|]+)\|(?P<accession>[^|]+)\|(?P<entry_name>\S+)\s+"
     r"(?P<protein_name>.*?)\s+OS=(?P<organism>.*?)\s+OX=(?P<taxon_id>\d+)"
-    r"(?:\s+GN=(?P<gene_name>\S+))?"
+    r"(?:\s+GN=(?P<gene_name>.*?))?"   # was \S+ — broke on multi-word gene names
     r"(?:\s+PE=\d+)?"
     r"(?:\s+SV=\d+)?\s*$"
 )

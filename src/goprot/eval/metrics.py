@@ -8,10 +8,38 @@ the predicted set and the ground-truth set before scoring.
 """
 
 
-def weighted_precision_recall(predictions: dict, ground_truth: dict, ia_weights: dict, known_terms: dict | None = None):
-    """known_terms, if given, is {protein_id: set[go_id]} to exclude (PK filtering)."""
-    raise NotImplementedError
+def weighted_precision_recall(predictions, ground_truth, ia_weights, known_terms=None, threshold=0.0):
+    precisions, recalls = [], []
+    for protein_id, true_terms in ground_truth.items():
+        known = known_terms.get(protein_id, set()) if known_terms else set()
+        true_eval = true_terms - known
+        true_weight = sum(ia_weights.get(t, 0.0) for t in true_eval)
+        if true_weight == 0.0:
+            continue  # nothing left to evaluate -- recall undefined, not zero
+
+        scores = predictions.get(protein_id, {})
+        predicted = {term for term, score in scores.items() if score >= threshold} - known
+
+        overlap_weight = sum(ia_weights.get(t, 0.0) for t in predicted & true_eval)
+        recalls.append(overlap_weight / true_weight)
+
+        if predicted:
+            predicted_weight = sum(ia_weights.get(t, 0.0) for t in predicted)
+            if predicted_weight > 0.0:
+                precisions.append(overlap_weight / predicted_weight)
+
+    wpr = sum(precisions) / len(precisions) if precisions else 0.0
+    wrc = sum(recalls) / len(recalls) if recalls else 0.0
+    return wpr, wrc
 
 
-def f_max(predictions: dict, ground_truth: dict, ia_weights: dict, known_terms: dict | None = None) -> float:
-    raise NotImplementedError
+def f_max(predictions, ground_truth, ia_weights, known_terms=None, thresholds=None):
+    if thresholds is None:
+        thresholds = [i / 100 for i in range(101)]
+    best = 0.0
+    for tau in thresholds:
+        wpr, wrc = weighted_precision_recall(predictions, ground_truth, ia_weights, known_terms, threshold=tau)
+        if wpr + wrc == 0.0:
+            continue
+        best = max(best, 2 * wpr * wrc / (wpr + wrc))
+    return best

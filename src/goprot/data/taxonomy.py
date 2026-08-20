@@ -127,11 +127,13 @@ def classify_kingdom(taxon_id, taxdump_graph, merged_map=None, max_depth=50):
 def resolve_kingdoms(
     taxon_ids: Iterable[int],
     taxdump_graph: nx.DiGraph | None = None,
+    merged_map: dict[str, str] | None = None,
     overrides: dict[int, str] | None = None,
 ) -> tuple[dict[int, str], list[int]]:
     """Resolution order: overrides > TAXON_TO_KINGDOM fast-path > taxdump
-    classification. Without taxdump_graph, only the fast-path organisms
-    resolve — everything else is honestly "unresolved", not guessed.
+    classification (following merged_map on a graph miss). Without
+    taxdump_graph, only the fast-path organisms resolve — everything else
+    is honestly "unresolved", not guessed.
     """
     table = {**TAXON_TO_KINGDOM, **(overrides or {})}
     resolved: dict[int, str] = {}
@@ -140,7 +142,7 @@ def resolve_kingdoms(
         if taxon_id in table:
             resolved[taxon_id] = table[taxon_id]
         elif taxdump_graph is not None:
-            kingdom = classify_kingdom(taxon_id, taxdump_graph)
+            kingdom = classify_kingdom(taxon_id, taxdump_graph, merged_map=merged_map)
             if kingdom is not None:
                 resolved[taxon_id] = kingdom
             else:
@@ -148,4 +150,3 @@ def resolve_kingdoms(
         else:
             unresolved.append(taxon_id)
     return resolved, sorted(unresolved)
-
