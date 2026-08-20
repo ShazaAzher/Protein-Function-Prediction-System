@@ -1,6 +1,7 @@
 # Paths
 paths:
-  raw_dir: data/raw
+  raw_train_dir: data/raw/Train
+  raw_test_dir: data/raw/Test
   processed_dir: data/processed
   outputs_dir: outputs
 

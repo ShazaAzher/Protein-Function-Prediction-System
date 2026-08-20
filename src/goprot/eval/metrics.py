@@ -43,3 +43,28 @@ def f_max(predictions, ground_truth, ia_weights, known_terms=None, thresholds=No
             continue
         best = max(best, 2 * wpr * wrc / (wpr + wrc))
     return best
+
+
+def find_best_threshold(predictions, ground_truth, ia_weights, known_terms=None, thresholds=None) -> tuple[float, float]:
+    if thresholds is None:
+        thresholds = [i / 100 for i in range(101)]
+    best_threshold = thresholds[0]
+    best_f1 = -1.0
+    for tau in thresholds:
+        wpr, wrc = weighted_precision_recall(predictions, ground_truth, ia_weights, known_terms, threshold=tau)
+        f1 = 0.0 if wpr + wrc == 0.0 else 2 * wpr * wrc / (wpr + wrc)
+        if f1 > best_f1:
+            best_f1 = f1
+            best_threshold = tau
+    return best_threshold, best_f1
+
+
+def find_best_thresholds_per_aspect(predictions_by_aspect, ground_truth_by_aspect, ia_weights, known_terms_by_aspect=None, thresholds=None) -> dict:
+    known_terms_by_aspect = known_terms_by_aspect or {}
+    return {
+        aspect: find_best_threshold(
+            predictions_by_aspect[aspect], ground_truth_by_aspect.get(aspect, {}),
+            ia_weights, known_terms_by_aspect.get(aspect), thresholds,
+        )
+        for aspect in predictions_by_aspect
+    }

@@ -4,7 +4,8 @@ Wraps go_graph/term_embeddings.py: given a protein's T0 for an aspect,
 produce the conditioning vector that gets concatenated to the ESM2 embedding
 before the classifier head (model/classifier.py).
 """
+import numpy as np 
+from goprot.go_graph.term_embeddings import pool_known_terms
 
-
-def encode_known_terms(protein_id: str, aspect: str, known_terms: set, term_embeddings) -> "np.ndarray":
-    raise NotImplementedError
+def encode_known_terms(known_terms: set[str], term_embeddings: dict[str, np.ndarray], method: str = "mean", dim: int | None = None) -> np.ndarray:
+    return pool_known_terms(known_terms, term_embeddings, method=method, dim=dim)
